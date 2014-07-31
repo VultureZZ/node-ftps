@@ -1,4 +1,5 @@
 var spawn = require('child_process').spawn,
+	fs = require('fs'),
 	_ = require('underscore');
 
 var escapeshell = function(cmd) {
@@ -30,7 +31,7 @@ FTP.prototype.initialize = function (options) {
 		username: '',
 		password: ''
 	};
-	var opts = _.pick(_.extend(defaults, options), 'host', 'username', 'password');
+	var opts = _.pick(_.extend(defaults, options), 'host', 'username', 'password', 'tmpDir');
 	if (!opts.host) throw new Error('You need to set a host.');
 	if (!opts.username) throw new Error('You need to set an username.');
 	if (!opts.password) throw new Error('You need to set a password.');
@@ -53,7 +54,30 @@ FTP.prototype.exec = function (cmds, callback) {
 	cmd += this.cmds.join(';');
 	this.cmds = [];
 
-	var lftp = spawn('lftp', ['-c', cmd]);
+	if (this.options.tmpDir) {
+		// If a temp folder is specified then we need to create a batch script to run the file from to avoid exposing the password.
+		var tmpFile = this.options.tmpDir + '/' + Math.ceil(Math.random() * (10000 - 1000) + 1000) + '.sh';
+		fs.writeFile(tmpFile, "#!/bin/bash\nlftp -c '" + cmd + "'", function (err) {
+			fs.chmod(tmpFile, '750', function (err) {
+				var lftp = spawn('/bin/bash', [tmpFile]);
+				parseLFTP(lftp, function (err, data) {
+					// remove our temp file
+					fs.unlink(tmpFile, function (removeError) {
+						callback(err, data);
+					});
+				});
+			});
+		});
+	} else {
+		var lftp = spawn('lftp', ['-c', cmd]);
+		parseLFTP(lftp, function (err, data) {
+			callback(err, data);
+		});	
+	}	
+};
+
+function parseLFTP (lftp, callback) {
+
 	var data = "";
 	var error = "";
 	lftp.stdout.on('data', function (res) {
@@ -71,8 +95,7 @@ FTP.prototype.exec = function (cmds, callback) {
 		if (callback)
 			callback(null, { error: error || null, data: data });
 	});
-	return this;
-};
+}
 
 FTP.prototype.raw = function (cmd) {
 	if (cmd && typeof cmd === 'string')
