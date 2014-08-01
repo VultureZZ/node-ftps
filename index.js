@@ -31,10 +31,12 @@ FTP.prototype.initialize = function (options) {
 		username: '',
 		password: ''
 	};
-	var opts = _.pick(_.extend(defaults, options), 'host', 'username', 'password', 'tmpDir');
+	var opts = _.pick(_.extend(defaults, options), 'host', 'username', 'password', 'keyFile');
 	if (!opts.host) throw new Error('You need to set a host.');
 	if (!opts.username) throw new Error('You need to set an username.');
-	if (!opts.password) throw new Error('You need to set a password.');
+	if (!opts.keyFile) {
+		if (!opts.password) throw new Error('You need to set a password.');
+	}	
 	if (typeof options.protocol === 'string' && options.protocol && opts.host.indexOf(options.protocol) !== 0)
 		opts.host = options.protocol + '://' + options.host;
 	this.options = opts;
@@ -51,29 +53,18 @@ FTP.prototype.exec = function (cmds, callback) {
 		throw new Error('callback is missing to exec() function.')
 	var cmd = '';
 	cmd += 'open -u "'+ escapeshell(this.options.username) + '","' + escapeshell(this.options.password) + '" "' + this.options.host + '";';
+	
+	if (this.options.keyFile) {
+		cmd += 'set sftp:connect-program "ssh -a -x -i ' + escapeshell(this.options.keyFile) + '";';
+	}
+
 	cmd += this.cmds.join(';');
 	this.cmds = [];
 
-	if (this.options.tmpDir) {
-		// If a temp folder is specified then we need to create a batch script to run the file from to avoid exposing the password.
-		var tmpFile = this.options.tmpDir + '/' + Math.ceil(Math.random() * (10000 - 1000) + 1000) + '.sh';
-		fs.writeFile(tmpFile, "#!/bin/bash\nlftp -c '" + cmd + "'", function (err) {
-			fs.chmod(tmpFile, '750', function (err) {
-				var lftp = spawn('/bin/bash', [tmpFile]);
-				parseLFTP(lftp, function (err, data) {
-					// remove our temp file
-					fs.unlink(tmpFile, function (removeError) {
-						callback(err, data);
-					});
-				});
-			});
-		});
-	} else {
-		var lftp = spawn('lftp', ['-c', cmd]);
-		parseLFTP(lftp, function (err, data) {
-			callback(err, data);
-		});	
-	}	
+	var lftp = spawn('lftp', ['-c', cmd]);
+	parseLFTP(lftp, function (err, data) {
+		callback(err, data);
+	});	
 };
 
 function parseLFTP (lftp, callback) {

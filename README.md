@@ -24,7 +24,7 @@ var ftps = new FTPS({
   host: 'domain.com', // required
   username: 'Test', // required
   password: 'Test', // required
-  tmpDir: '', // optional. Creates a temporary file whenever called to mask lftp command from process list. Specify a folder only your user has access to, ie ~/tmp
+  keyFile: '', // optional. if specified remove the password value
   protocol: 'sftp', // optional, values : 'ftp', 'sftp', 'ftps',... default is 'ftp'
   // protocol is added on beginning of host, ex : sftp://domain.com in this case
 });
